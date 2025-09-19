@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18  # Change if needed
+          node-version: 18
 
       # 3. Install & Build
       - name: Install & Build
@@ -26,21 +26,22 @@ jobs:
           npm install
           CI=false npm run build
 
-      # 4. Deploy to EC2
+      # 4. Setup SSH Key
+      - name: Setup SSH Key
+        run: |
+          echo "${{ secrets.EC2_SSH_KEY }}" > ec2_key.pem
+          chmod 600 ec2_key.pem
+
+      # 5. Deploy to EC2
       - name: Deploy to EC2
         if: success()
         run: |
           echo "🚀 Deploying build to EC2..."
-          # Compress build folder
           tar -czf build.tar.gz build
+          scp -o StrictHostKeyChecking=no -i ec2_key.pem build.tar.gz ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/
+          ssh -o StrictHostKeyChecking=no -i ec2_key.pem ubuntu@${{ secrets.EC2_HOST }} "rm -rf /home/ubuntu/build && mkdir -p /home/ubuntu/build && tar -xzf /home/ubuntu/build.tar.gz -C /home/ubuntu && rm /home/ubuntu/build.tar.gz"
 
-          # Copy to EC2
-          scp -o StrictHostKeyChecking=no -i ${{ secrets.EC2_SSH_KEY }} build.tar.gz ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/
-
-          # SSH into EC2 and extract
-          ssh -o StrictHostKeyChecking=no -i ${{ secrets.EC2_SSH_KEY }} ubuntu@${{ secrets.EC2_HOST }} "rm -rf /home/ubuntu/build && mkdir -p /home/ubuntu/build && tar -xzf /home/ubuntu/build.tar.gz -C /home/ubuntu && rm /home/ubuntu/build.tar.gz"
-
-      # 5. Build status
+      # 6. Build status
       - name: Build Success
         if: success()
         run: echo "✅ Build completed and deployed successfully!"

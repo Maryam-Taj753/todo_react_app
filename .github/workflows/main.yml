@@ -1,0 +1,56 @@
+name: React App CI & Deploy
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Clean old build folder
+      - name: Clean old build
+        run: |
+          rm -rf todo_react_app
+
+      # 3. Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18  # Change if needed
+
+      # 4. Install & Build
+      - name: Install & Build
+        working-directory: ./todo_react_app
+        run: |
+          npm install
+          CI=false npm run build
+
+      # 5. Deploy to EC2
+      - name: Deploy to EC2
+        if: success()
+        run: |
+          echo "🚀 Deploying build to EC2..."
+          # Compress build folder
+          tar -czf build.tar.gz -C todo_react_app build
+
+          # Copy to EC2
+          scp -o StrictHostKeyChecking=no -i ${{ secrets.EC2_SSH_KEY }} build.tar.gz ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/
+
+          # SSH into EC2 and extract
+          ssh -o StrictHostKeyChecking=no -i ${{ secrets.EC2_SSH_KEY }} ubuntu@${{ secrets.EC2_HOST }} "rm -rf /home/ubuntu/build && mkdir -p /home/ubuntu/build && tar -xzf /home/ubuntu/build.tar.gz -C /home/ubuntu && rm /home/ubuntu/build.tar.gz"
+
+      # 6. Build status
+      - name: Build Success
+        if: success()
+        run: echo "✅ Build completed and deployed successfully!"
+
+      - name: Build Failure
+        if: failure()
+        run: echo "❌ Build failed. Check logs."
